@@ -8,112 +8,363 @@
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <style>
-:root{--bg:var(--tg-theme-bg-color,#fff);--fg:var(--tg-theme-text-color,#1b2a2f);--hint:var(--tg-theme-hint-color,#78888c);
---btn:var(--tg-theme-button-color,#0f8b8d);--btnfg:var(--tg-theme-button-text-color,#fff);--sec:var(--tg-theme-secondary-bg-color,#eef3f3)}
-*{box-sizing:border-box}
-html,body{height:100%;margin:0;font:15px/1.4 system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--fg)}
-#map{position:absolute;inset:0 0 38% 0}
-#search{position:absolute;z-index:500;top:10px;left:10px;right:10px;display:flex;gap:6px}
-#search input{flex:1;padding:11px 14px;border:0;border-radius:12px;background:var(--bg);color:var(--fg);box-shadow:0 2px 10px #0003;font:inherit}
-button{font:inherit;border:0;border-radius:10px;padding:10px 14px;background:var(--btn);color:var(--btnfg);cursor:pointer}
-button.ghost{background:var(--sec);color:var(--fg)}
-#sheet{position:absolute;left:0;right:0;bottom:0;height:40%;background:var(--bg);border-radius:18px 18px 0 0;box-shadow:0 -4px 16px #0002;display:flex;flex-direction:column;z-index:600}
-#sheet h2{margin:0;padding:14px 16px 8px;font-size:16px}
-#list{overflow:auto;padding:0 8px 12px;flex:1}
-.item{display:flex;align-items:center;gap:8px;padding:10px 8px;border-radius:10px}
-.item:active{background:var(--sec)}
-.item .name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.item.done .name{text-decoration:line-through;color:var(--hint)}
-.item button{padding:6px 10px}
-.empty{padding:16px;color:var(--hint)}
-#form{display:none;padding:0 16px 16px;gap:8px;flex-direction:column}
-#form input{padding:11px 14px;border:1px solid var(--sec);border-radius:10px;background:var(--sec);color:var(--fg);font:inherit}
-#form .row{display:flex;gap:8px}#form .row button:first-child{flex:1}
-.pin{width:18px;height:18px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:#0f8b8d;border:2px solid #fff;box-shadow:0 1px 4px #0006}
-.pin.done{background:#8a9a9d}.pin.draft{background:#e4572e}
+:root{
+  --bg:var(--tg-theme-bg-color,#f7f8f6);
+  --fg:var(--tg-theme-text-color,#17262f);
+  --hint:var(--tg-theme-hint-color,#78848b);
+  --acc:var(--tg-theme-button-color,#087f83);
+  --accfg:var(--tg-theme-button-text-color,#fff);
+  --sec:var(--tg-theme-secondary-bg-color,#eef1ef);
+  --card:color-mix(in srgb,var(--bg) 94%,#fff);
+  --line:color-mix(in srgb,var(--fg) 9%,transparent);
+  --red:#d95743;
+  --done:#8d999e;
+  --shadow:0 12px 40px #15242a20,0 2px 8px #15242a12;
+  --shadow-soft:0 5px 18px #15242a18;
+  --ease:cubic-bezier(.22,.9,.28,1);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{
+  height:100%;margin:0;overflow:hidden;background:var(--bg);color:var(--fg);
+  font:15px/1.4 system-ui,-apple-system,"SF Pro Display","Segoe UI",Roboto,sans-serif;
+  letter-spacing:-.01em
+}
+button,input{font:inherit;color:inherit}
+button{border:0;cursor:pointer;transition:transform .15s var(--ease),background .2s,box-shadow .2s}
+button:active{transform:scale(.96)}
+:focus-visible{outline:2px solid var(--acc);outline-offset:3px}
+#map{position:fixed;inset:0;background:#dfe5e5}
+.float{position:fixed;z-index:500}
+
+/* Search */
+#search{
+  top:calc(14px + env(safe-area-inset-top));left:14px;right:70px;max-width:500px;
+  display:flex;align-items:center;
+  background:color-mix(in srgb,var(--bg) 91%,transparent);
+  border:1px solid #ffffff75;border-radius:18px;
+  box-shadow:var(--shadow);padding-left:14px;
+  backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
+  transition:.2s var(--ease)
+}
+#search:focus-within{box-shadow:0 0 0 2px color-mix(in srgb,var(--acc) 65%,transparent),var(--shadow)}
+#search svg{width:18px;height:18px;flex:none;stroke:var(--hint);fill:none;stroke-width:2.2;stroke-linecap:round}
+#search input{
+  flex:1;min-width:0;border:0;background:transparent;padding:13px 10px;font-size:16px;
+  outline:0
+}
+#search input::placeholder{color:var(--hint)}
+#search button{
+  margin:5px;padding:9px 13px;border-radius:12px;background:var(--acc);color:var(--accfg);
+  font-size:13px;font-weight:700
+}
+#fabs{
+  top:calc(14px + env(safe-area-inset-top));right:14px;
+  display:flex;flex-direction:column;gap:9px
+}
+.fab{
+  width:48px;height:48px;border-radius:16px;
+  background:color-mix(in srgb,var(--bg) 91%,transparent);
+  border:1px solid #ffffff75;box-shadow:var(--shadow);
+  display:grid;place-items:center;backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)
+}
+.fab:hover{box-shadow:0 0 0 2px color-mix(in srgb,var(--acc) 18%,transparent),var(--shadow)}
+.fab svg{width:21px;height:21px;stroke:var(--fg);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+/* Feedback */
+#hint{
+  left:50%;top:calc(78px + env(safe-area-inset-top));transform:translateX(-50%);
+  background:#14242bdd;color:#fff;padding:9px 15px;border-radius:99px;font-size:13px;
+  white-space:nowrap;pointer-events:none;backdrop-filter:blur(8px);
+  transition:opacity .5s;box-shadow:0 8px 24px #0003
+}
+#hint.off{opacity:0}
+#toast{
+  left:50%;top:calc(76px + env(safe-area-inset-top));transform:translate(-50%,-12px);
+  opacity:0;pointer-events:none;display:flex;align-items:center;gap:10px;
+  background:#14242bf5;color:#fff;padding:8px 8px 8px 15px;border-radius:15px;
+  box-shadow:var(--shadow);transition:.3s var(--ease);max-width:calc(100% - 24px)
+}
+#toast.on{opacity:1;transform:translate(-50%,0);pointer-events:auto}
+#toast span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#toast button{background:#ffffff1f;color:#fff;padding:7px 11px;border-radius:10px;font-weight:700}
+
+/* Bottom sheet */
+#sheet{
+  position:fixed;z-index:600;left:0;right:0;bottom:0;height:84dvh;
+  display:flex;flex-direction:column;
+  background:color-mix(in srgb,var(--bg) 97%,transparent);
+  border:1px solid #ffffff55;border-bottom:0;border-radius:28px 28px 0 0;
+  box-shadow:0 -14px 50px #00000026;
+  transform:translateY(var(--ty,72dvh));transition:transform .4s var(--ease);
+  will-change:transform;backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px)
+}
+#sheet.dragging{transition:none}
+#head{padding:9px 20px 11px;touch-action:none;user-select:none;cursor:grab}
+#grab{width:38px;height:4px;border-radius:99px;background:color-mix(in srgb,var(--fg) 18%,transparent);margin:0 auto 15px}
+#head h1{margin:0;font-size:24px;line-height:1.05;font-weight:800;letter-spacing:-.035em}
+#count{color:var(--hint);font-size:13px;margin-top:5px}
+
+/* Tabs */
+#tabs{
+  display:flex;gap:4px;margin:0 16px 9px;padding:4px;
+  background:color-mix(in srgb,var(--sec) 88%,transparent);border:1px solid var(--line);
+  border-radius:15px
+}
+#tabs button{
+  flex:1;padding:8px 7px;border-radius:11px;background:transparent;color:var(--hint);
+  font-size:13px;font-weight:650
+}
+#tabs button.on{
+  background:var(--bg);color:var(--fg);box-shadow:0 2px 8px #00000012
+}
+
+/* List */
+#list{
+  flex:1;min-height:0;overflow:auto;
+  padding:3px 12px calc(var(--hide,0px) + 18px + env(safe-area-inset-bottom));
+  overscroll-behavior:contain
+}
+.item{
+  position:relative;display:flex;align-items:center;gap:11px;
+  padding:9px 9px;margin:3px 0;border-radius:17px;cursor:pointer;
+  background:color-mix(in srgb,var(--bg) 76%,transparent);
+  border:1px solid transparent;transition:background .2s,transform .2s,border-color .2s;
+  animation:in .35s var(--ease) backwards
+}
+.item:hover{background:var(--sec);border-color:var(--line)}
+.item:active{transform:scale(.99)}
+.item.flash{background:color-mix(in srgb,var(--acc) 13%,var(--bg));border-color:color-mix(in srgb,var(--acc) 25%,transparent)}
+@keyframes in{from{opacity:0;transform:translateY(8px)}}
+.chk{
+  flex:none;width:34px;height:34px;border-radius:50%;
+  border:2px solid color-mix(in srgb,var(--acc) 48%,transparent);
+  background:color-mix(in srgb,var(--bg) 80%,transparent);
+  display:grid;place-items:center;color:transparent;transition:.2s
+}
+.chk svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:3.2;stroke-linecap:round;stroke-linejoin:round}
+.chk:hover{border-color:var(--acc);background:color-mix(in srgb,var(--acc) 8%,var(--bg))}
+.done .chk{background:var(--done);border-color:var(--done);color:#fff}
+.txt{flex:1;min-width:0}
+.name{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:650;letter-spacing:-.015em}
+.date{display:block;font-size:12px;color:var(--hint);margin-top:1px}
+.done .name{color:var(--hint);text-decoration:line-through;text-decoration-thickness:1px}
+.del{
+  flex:none;width:34px;height:34px;border-radius:11px;background:transparent;color:var(--hint);
+  font-size:13px;opacity:.55
+}
+.del:hover{background:color-mix(in srgb,var(--red) 13%,transparent);color:var(--red);opacity:1}
+.empty{
+  margin:10px 4px;padding:28px 18px;color:var(--hint);text-align:center;line-height:1.5;
+  background:color-mix(in srgb,var(--sec) 55%,transparent);border:1px dashed var(--line);
+  border-radius:19px
+}
+.credits{padding:10px 8px 0;text-align:center;font-size:10px;color:var(--hint);opacity:.65}
+
+/* Add form */
+#form{display:none;flex-direction:column;gap:9px;padding:3px 16px 17px}
+#form label{font-size:12px;color:var(--hint);font-weight:650}
+#form input{
+  padding:14px;border:1px solid var(--line);border-radius:15px;
+  background:var(--sec);font-size:16px;outline:0;transition:border-color .2s,box-shadow .2s
+}
+#form input:focus{border-color:var(--acc);box-shadow:0 0 0 3px color-mix(in srgb,var(--acc) 12%,transparent)}
+#form .row{display:flex;gap:8px}
+#form .row button{padding:13px 18px;border-radius:14px;background:var(--sec);font-weight:600}
+#form .row .main{flex:1;background:var(--acc);color:var(--accfg);font-weight:750;box-shadow:0 6px 16px color-mix(in srgb,var(--acc) 22%,transparent)}
+body.drafting #form{display:flex;animation:in .3s var(--ease)}
+body.drafting #list,body.drafting #tabs{display:none}
+
+/* Map pins */
+.pin{
+  width:34px;height:42px;color:var(--acc);
+  filter:drop-shadow(0 4px 4px #0005);transform-origin:50% 100%
+}
+.pin svg{width:100%;height:100%;display:block}
+.pin.done{color:var(--done)}
+.pin.draft{color:var(--red)}
+.pin.new{animation:drop .5s cubic-bezier(.3,1.5,.5,1)}
+@keyframes drop{from{opacity:0;transform:translateY(-26px) scale(.7)}}
+.me{
+  width:16px;height:16px;border-radius:50%;background:#2f7cf6;border:3px solid #fff;
+  box-shadow:0 0 0 8px #2f7cf62e
+}
+.leaflet-tooltip{
+  border:0;border-radius:10px;box-shadow:var(--shadow-soft);font:600 12px system-ui;padding:6px 9px
+}
+.leaflet-bar{
+  border:0!important;box-shadow:var(--shadow)!important;border-radius:14px!important;overflow:hidden
+}
+.leaflet-bar a{
+  width:40px!important;height:40px!important;line-height:40px!important;
+  background:var(--bg);color:var(--fg);border-color:var(--line)!important
+}
+.leaflet-control-attribution{display:none}
+
+/* Desktop */
+@media (min-width:800px){
+  #sheet{
+    top:14px;bottom:14px;left:14px;right:auto;width:398px;height:auto;
+    border-radius:25px;transform:none;box-shadow:var(--shadow)
+  }
+  #head{cursor:default;touch-action:auto;padding:23px 22px 13px}
+  #grab{display:none}
+  #list{padding:3px 13px 15px}
+  #search{left:430px}
+  #fabs{right:16px}
+}
+
+/* Small phones */
+@media (max-width:390px){
+  #search{left:10px;right:64px}
+  #search button{display:none}
+  #sheet{height:86dvh}
+  #head h1{font-size:22px}
+}
+@media (prefers-reduced-motion:reduce){
+  *{animation:none!important;transition:none!important}
+}
 </style>
 </head>
 <body>
 <div id="map"></div>
-<form id="search"><input id="q" placeholder="Найти место или город" enterkeyhint="search"><button>Найти</button></form>
-<div id="sheet">
-  <h2 id="title">Хочу побывать</h2>
-  <div id="form">
-    <input id="name" placeholder="Название места" maxlength="80">
-    <div class="row"><button id="save" type="button">Сохранить</button><button id="cancel" type="button" class="ghost">Отмена</button></div>
-  </div>
-  <div id="list"></div>
+<form id="search" class="float"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg><input id="q" placeholder="Найти место или адрес" enterkeyhint="search" aria-label="Поиск"><button>Найти</button></form>
+<div id="fabs" class="float">
+  <button class="fab" id="locate" aria-label="Моё местоположение" title="Моё местоположение"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="8"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></button>
+  <button class="fab" id="fit" aria-label="Показать все места" title="Показать все места"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
 </div>
+<div id="hint" class="float">Нажмите на карту, чтобы отметить место</div>
+<div id="toast" class="float"><span id="tmsg"></span><button id="tundo">Отменить</button></div>
+<aside id="sheet">
+  <div id="head"><div id="grab"></div><h1>Хочу побывать</h1><div id="count"></div></div>
+  <div id="tabs"><button data-f="all" class="on">Все</button><button data-f="todo">Впереди</button><button data-f="done">Посетил</button></div>
+  <form id="form"><label for="name">Название места</label><input id="name" maxlength="80" autocomplete="off" placeholder="Например, Летний сад">
+    <div class="row"><button class="main">Сохранить</button><button type="button" id="cancel">Отмена</button></div></form>
+  <div id="list"></div>
+</aside>
 <script>
-const tg = window.Telegram?.WebApp; tg?.ready(); tg?.expand();
-const $ = id => document.getElementById(id);
-let places = [], markers = {}, draft = null, draftMarker = null;
+const tg=window.Telegram?.WebApp; tg?.ready(); tg?.expand();
+const $=id=>document.getElementById(id), sheet=$('sheet');
+const CHECK='<svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+const PIN='<svg viewBox="0 0 32 40"><path d="M16 1.5C8.3 1.5 2.5 7.4 2.5 15c0 10 13.5 23.5 13.5 23.500S29.5 25 29.5 15C29.5 7.4 23.7 1.5 16 1.500z" fill="currentColor" stroke="#fff" stroke-width="2.5"/><circle cx="16" cy="15" r="5.5" fill="#fff"/></svg>';
+const HOME=[59.9343,30.3351];
+let places=[],markers={},rows={},draft=null,draftMarker=null,filter='all',meMarker=null,justAdded=null,snap='peek',toastT;
+const wide=()=>matchMedia('(min-width:800px)').matches;
 
-// --- хранилище: облако Telegram (синхронизируется между устройствами), иначе localStorage
-const cloud = tg?.initData && tg.CloudStorage;
-const store = {
+// Хранилище: облако Telegram (синхронизация между устройствами), иначе localStorage
+const cloud=tg?.initData&&tg.CloudStorage;
+const store={
   load(cb){
-    if(!cloud){ try{cb(JSON.parse(localStorage.getItem('places')||'[]'))}catch{cb([])} return; }
-    cloud.getKeys((e,keys)=>{
-      keys=(keys||[]).filter(k=>k.startsWith('p_'));
-      if(!keys.length) return cb([]);
-      cloud.getItems(keys,(e,o)=>cb(Object.values(o||{}).map(v=>JSON.parse(v))));
-    });
+    if(!cloud){try{cb(JSON.parse(localStorage.getItem('places')||'[]'))}catch{cb([])}return}
+    cloud.getKeys((e,keys)=>{keys=(keys||[]).filter(k=>k.startsWith('p_'));
+      if(!keys.length)return cb([]);
+      cloud.getItems(keys,(e,o)=>cb(Object.values(o||{}).map(v=>JSON.parse(v))))});
   },
-  save(p){ cloud ? cloud.setItem('p_'+p.id,JSON.stringify(p)) : localStorage.setItem('places',JSON.stringify(places)); },
-  del(p){ cloud ? cloud.removeItem('p_'+p.id) : localStorage.setItem('places',JSON.stringify(places)); }
+  save(p){cloud?cloud.setItem('p_'+p.id,JSON.stringify(p)):localStorage.setItem('places',JSON.stringify(places))},
+  del(p){cloud?cloud.removeItem('p_'+p.id):localStorage.setItem('places',JSON.stringify(places))}
 };
 
-// --- карта
-const map = L.map('map',{zoomControl:false}).setView([59.437,24.754],11);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(map);
-const icon = c => L.divIcon({className:'',html:`<div class="pin ${c}"></div>`,iconSize:[18,18],iconAnchor:[9,18]});
+// Карта (Санкт-Петербург); тёмные плитки при тёмной теме
+const dark=(tg?.colorScheme||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light'))==='dark';
+const map=L.map('map',{zoomControl:false,attributionControl:false}).setView(HOME,12);
+L.tileLayer(`https://{s}.basemaps.cartocdn.com/rastertiles/${dark?'dark_all':'voyager'}/{z}/{x}/{y}{r}.png`,{subdomains:'abcd',maxZoom:19}).addTo(map);
+if(wide())L.control.zoom({position:'bottomright'}).addTo(map);
+const icon=(c,sz=[32,40])=>L.divIcon({className:'',html:`<div class="pin ${c}">${PIN}</div>`,iconSize:sz,iconAnchor:[16,40]});
+
+// Шторка: три положения, перетаскивается
+const SNAP={peek:()=>112,half:()=>innerHeight*.47,full:()=>sheet.offsetHeight};
+function setSheet(name){
+  snap=name;if(wide())return;
+  const H=sheet.offsetHeight,v=SNAP[name]();
+  sheet.style.setProperty('--ty',(H-v)+'px');sheet.style.setProperty('--hide',(H-v)+'px');
+}
+function visible(){return wide()?0:SNAP[snap]()}
+function focus(lat,lng,z=map.getZoom()){ // ставим точку в центр видимой части карты
+  const pt=map.project([lat,lng],z);
+  if(wide())pt.x-=198;else pt.y+=visible()/2;
+  map.flyTo(map.unproject(pt,z),z,{duration:.7});
+}
+let drag=null;const head=$('head');
+head.addEventListener('pointerdown',e=>{if(wide())return;drag={y:e.clientY,t:Date.now(),v0:SNAP[snap](),moved:false};head.setPointerCapture(e.pointerId);sheet.classList.add('dragging')});
+head.addEventListener('pointermove',e=>{if(!drag)return;const dy=e.clientY-drag.y;if(Math.abs(dy)>5)drag.moved=true;
+  const H=sheet.offsetHeight,v=Math.max(SNAP.peek(),Math.min(H,drag.v0-dy));sheet.style.setProperty('--ty',(H-v)+'px')});
+head.addEventListener('pointerup',e=>{if(!drag)return;const d=drag;drag=null;sheet.classList.remove('dragging');
+  if(!d.moved)return setSheet(snap==='peek'?'half':'peek');
+  const dy=e.clientY-d.y,vel=dy/Math.max(1,Date.now()-d.t),want=d.v0-dy-vel*180;
+  setSheet(['peek','half','full'].sort((a,b)=>Math.abs(SNAP[a]()-want)-Math.abs(SNAP[b]()-want))[0]);tg?.HapticFeedback?.impactOccurred('light')});
+addEventListener('resize',()=>{setSheet(snap);map.invalidateSize()});
+
+function toast(msg,undo){
+  $('tmsg').textContent=msg;$('tundo').style.display=undo?'':'none';$('tundo').onclick=()=>{undo();$('toast').classList.remove('on')};
+  $('toast').classList.add('on');clearTimeout(toastT);toastT=setTimeout(()=>$('toast').classList.remove('on'),5000);
+}
 
 function render(){
-  Object.values(markers).forEach(m=>m.remove()); markers={};
-  const list=$('list'); list.innerHTML='';
-  $('title').textContent = places.length ? `Хочу побывать · ${places.filter(p=>!p.done).length} из ${places.length}` : 'Хочу побывать';
-  if(!places.length){ list.innerHTML='<div class="empty">Нажмите на карту, чтобы отметить первое место.</div>'; return; }
-  places.sort((a,b)=>a.done-b.done||b.id-a.id).forEach(p=>{
-    markers[p.id]=L.marker([p.lat,p.lng],{icon:icon(p.done?'done':'')}).addTo(map).bindTooltip(p.name);
-    const row=document.createElement('div'); row.className='item'+(p.done?' done':'');
-    const n=document.createElement('span'); n.className='name'; n.textContent=p.name;
-    const ok=document.createElement('button'); ok.className='ghost'; ok.textContent=p.done?'Вернуть':'Был здесь';
-    const rm=document.createElement('button'); rm.className='ghost'; rm.textContent='Удалить';
-    row.onclick=()=>map.flyTo([p.lat,p.lng],15);
-    ok.onclick=e=>{e.stopPropagation();p.done=!p.done;store.save(p);render()};
-    rm.onclick=e=>{e.stopPropagation();if(!confirm('Удалить «'+p.name+'»?'))return;places=places.filter(x=>x!==p);store.del(p);render()};
-    row.append(n,ok,rm); list.append(row);
+  Object.values(markers).forEach(m=>m.remove());markers={};rows={};
+  const list=$('list');list.innerHTML='';
+  const todo=places.filter(p=>!p.done).length;
+  $('count').textContent=places.length?`${todo} впереди · ${places.length-todo} посещено`:'Пока нет мест';
+  places.forEach(p=>{
+    const m=markers[p.id]=L.marker([p.lat,p.lng],{icon:icon((p.done?'done ':'')+(p.id===justAdded?'new':''))}).addTo(map).bindTooltip(p.name,{direction:'top',offset:[0,-38]});
+    m.on('click',()=>{if(!wide())setSheet('half');focus(p.lat,p.lng);const r=rows[p.id];if(r){r.scrollIntoView({block:'center',behavior:'smooth'});r.classList.add('flash');setTimeout(()=>r.classList.remove('flash'),1400)}});
   });
+  justAdded=null;
+  const vis=places.filter(p=>filter==='all'||(filter==='done')===p.done).sort((a,b)=>b.id-a.id);
+  if(!vis.length)list.innerHTML=`<div class="empty">${places.length?'В этой вкладке пока пусто.':'Здесь будут места, куда хочется попасть.<br>Нажмите на карту или найдите адрес в поиске.'}</div>`;
+  vis.forEach((p,i)=>{
+    const r=document.createElement('div');r.className='item'+(p.done?' done':'');r.style.animationDelay=Math.min(i,8)*25+'ms';rows[p.id]=r;
+    const c=document.createElement('button');c.className='chk';c.innerHTML=CHECK;c.setAttribute('aria-label',p.done?'Вернуть в «Впереди»':'Отметить как посещённое');
+    const t=document.createElement('div');t.className='txt';
+    const n=document.createElement('span');n.className='name';n.textContent=p.name;
+    const dt=document.createElement('span');dt.className='date';dt.textContent=(p.done?'Были · ':'Добавлено ')+new Date(p.id).toLocaleDateString('ru',{day:'numeric',month:'short'});
+    t.append(n,dt);
+    const d=document.createElement('button');d.className='del';d.textContent='✕';d.setAttribute('aria-label','Удалить');
+    r.onclick=()=>{if(!wide())setSheet('peek');focus(p.lat,p.lng,15)};
+    c.onclick=e=>{e.stopPropagation();p.done=!p.done;store.save(p);tg?.HapticFeedback?.impactOccurred('medium');render()};
+    d.onclick=e=>{e.stopPropagation();places=places.filter(x=>x!==p);store.del(p);render();
+      toast(`«${p.name}» удалено`,()=>{places.push(p);store.save(p);render()})};
+    r.append(c,t,d);list.append(r);
+  });
+  list.insertAdjacentHTML('beforeend','<div class="credits">Карта © OpenStreetMap, © CARTO</div>');
 }
 
 function startDraft(lat,lng,name=''){
-  clearDraft(); draft={lat,lng};
-  draftMarker=L.marker([lat,lng],{icon:icon('draft')}).addTo(map);
-  $('form').style.display='flex'; $('list').style.display='none'; $('name').value=name; $('name').focus();
+  clearDraft();draft={lat,lng};$('hint').classList.add('off');
+  draftMarker=L.marker([lat,lng],{icon:icon('draft new')}).addTo(map);
+  document.body.classList.add('drafting');setSheet('half');focus(lat,lng);
+  $('name').value=name;setTimeout(()=>$('name').focus({preventScroll:true}),350);
 }
-function clearDraft(){ draft=null; draftMarker?.remove(); draftMarker=null; $('form').style.display='none'; $('list').style.display=''; }
-
-map.on('click',e=>startDraft(e.latlng.lat,e.latlng.lng));
-$('cancel').onclick=clearDraft;
-$('save').onclick=()=>{
-  const name=$('name').value.trim(); if(!name||!draft) return $('name').focus();
+function clearDraft(){draft=null;draftMarker?.remove();draftMarker=null;document.body.classList.remove('drafting')}
+map.on('click',e=>{if(!drag)startDraft(e.latlng.lat,e.latlng.lng)});
+$('cancel').onclick=()=>{clearDraft();if(!places.length)setSheet('peek')};
+$('form').onsubmit=e=>{
+  e.preventDefault();const name=$('name').value.trim();if(!name||!draft)return $('name').focus();
   const p={id:Date.now(),name,lat:draft.lat,lng:draft.lng,done:false};
-  places.push(p); store.save(p); clearDraft(); render(); tg?.HapticFeedback?.notificationOccurred('success');
+  places.push(p);store.save(p);justAdded=p.id;clearDraft();filter='all';syncTabs();render();setSheet('peek');
+  tg?.HapticFeedback?.notificationOccurred('success');toast(`«${name}» сохранено`);
 };
+function syncTabs(){document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('on',b.dataset.f===filter))}
+document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>{filter=b.dataset.f;syncTabs();render()});
 
-// --- поиск по названию (Nominatim / OpenStreetMap)
+// Поиск по названию (Nominatim / OpenStreetMap)
 $('search').onsubmit=async e=>{
-  e.preventDefault(); const q=$('q').value.trim(); if(!q) return;
+  e.preventDefault();const q=$('q').value.trim();if(!q)return;$('q').blur();
   try{
-    const r=await (await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q='+encodeURIComponent(q))).json();
-    if(!r.length) return alert('Ничего не найдено');
-    const {lat,lon,display_name}=r[0]; map.flyTo([+lat,+lon],15);
-    startDraft(+lat,+lon,display_name.split(',')[0]);
-  }catch{ alert('Поиск недоступен, попробуйте позже'); }
+    const r=await(await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&accept-language=ru&q='+encodeURIComponent(q))).json();
+    if(!r.length)return toast('Ничего не найдено');
+    const {lat,lon,display_name}=r[0];startDraft(+lat,+lon,display_name.split(',')[0]);
+  }catch{toast('Поиск недоступен, попробуйте позже')}
 };
 
-store.load(p=>{ places=p; render(); if(p.length) map.fitBounds(p.map(x=>[x.lat,x.lng]),{padding:[40,40],maxZoom:14}); });
+// Кнопки на карте
+$('fit').onclick=()=>{if(!places.length)return focus(...HOME,12);
+  const b=L.latLngBounds(places.map(p=>[p.lat,p.lng]));
+  map.flyToBounds(b,{paddingTopLeft:[wide()?410:40,90],paddingBottomRight:[40,visible()+30],maxZoom:15,duration:.8})};
+$('locate').onclick=()=>map.locate({setView:false,maxZoom:15});
+map.on('locationfound',e=>{meMarker?.remove();meMarker=L.marker(e.latlng,{icon:L.divIcon({className:'',html:'<div class="me"></div>',iconSize:[16,16]}),interactive:false}).addTo(map);focus(e.latlng.lat,e.latlng.lng,15)});
+map.on('locationerror',()=>toast('Не удалось определить местоположение'));
+
+setSheet('peek');
+store.load(p=>{places=p;render();if(p.length){$('fit').click();setSheet('half')}setTimeout(()=>$('hint').classList.add('off'),6000)});
 </script>
 </body>
 </html>
