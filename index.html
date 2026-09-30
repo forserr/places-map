@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Хочу побывать</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+:root{--bg:var(--tg-theme-bg-color,#fff);--fg:var(--tg-theme-text-color,#1b2a2f);--hint:var(--tg-theme-hint-color,#78888c);
+--btn:var(--tg-theme-button-color,#0f8b8d);--btnfg:var(--tg-theme-button-text-color,#fff);--sec:var(--tg-theme-secondary-bg-color,#eef3f3)}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;font:15px/1.4 system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--fg)}
+#map{position:absolute;inset:0 0 38% 0}
+#search{position:absolute;z-index:500;top:10px;left:10px;right:10px;display:flex;gap:6px}
+#search input{flex:1;padding:11px 14px;border:0;border-radius:12px;background:var(--bg);color:var(--fg);box-shadow:0 2px 10px #0003;font:inherit}
+button{font:inherit;border:0;border-radius:10px;padding:10px 14px;background:var(--btn);color:var(--btnfg);cursor:pointer}
+button.ghost{background:var(--sec);color:var(--fg)}
+#sheet{position:absolute;left:0;right:0;bottom:0;height:40%;background:var(--bg);border-radius:18px 18px 0 0;box-shadow:0 -4px 16px #0002;display:flex;flex-direction:column;z-index:600}
+#sheet h2{margin:0;padding:14px 16px 8px;font-size:16px}
+#list{overflow:auto;padding:0 8px 12px;flex:1}
+.item{display:flex;align-items:center;gap:8px;padding:10px 8px;border-radius:10px}
+.item:active{background:var(--sec)}
+.item .name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.item.done .name{text-decoration:line-through;color:var(--hint)}
+.item button{padding:6px 10px}
+.empty{padding:16px;color:var(--hint)}
+#form{display:none;padding:0 16px 16px;gap:8px;flex-direction:column}
+#form input{padding:11px 14px;border:1px solid var(--sec);border-radius:10px;background:var(--sec);color:var(--fg);font:inherit}
+#form .row{display:flex;gap:8px}#form .row button:first-child{flex:1}
+.pin{width:18px;height:18px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:#0f8b8d;border:2px solid #fff;box-shadow:0 1px 4px #0006}
+.pin.done{background:#8a9a9d}.pin.draft{background:#e4572e}
+</style>
+</head>
+<body>
+<div id="map"></div>
+<form id="search"><input id="q" placeholder="Найти место или город" enterkeyhint="search"><button>Найти</button></form>
+<div id="sheet">
+  <h2 id="title">Хочу побывать</h2>
+  <div id="form">
+    <input id="name" placeholder="Название места" maxlength="80">
+    <div class="row"><button id="save" type="button">Сохранить</button><button id="cancel" type="button" class="ghost">Отмена</button></div>
+  </div>
+  <div id="list"></div>
+</div>
+<script>
+const tg = window.Telegram?.WebApp; tg?.ready(); tg?.expand();
+const $ = id => document.getElementById(id);
+let places = [], markers = {}, draft = null, draftMarker = null;
+
+// --- хранилище: облако Telegram (синхронизируется между устройствами), иначе localStorage
+const cloud = tg?.initData && tg.CloudStorage;
+const store = {
+  load(cb){
+    if(!cloud){ try{cb(JSON.parse(localStorage.getItem('places')||'[]'))}catch{cb([])} return; }
+    cloud.getKeys((e,keys)=>{
+      keys=(keys||[]).filter(k=>k.startsWith('p_'));
+      if(!keys.length) return cb([]);
+      cloud.getItems(keys,(e,o)=>cb(Object.values(o||{}).map(v=>JSON.parse(v))));
+    });
+  },
+  save(p){ cloud ? cloud.setItem('p_'+p.id,JSON.stringify(p)) : localStorage.setItem('places',JSON.stringify(places)); },
+  del(p){ cloud ? cloud.removeItem('p_'+p.id) : localStorage.setItem('places',JSON.stringify(places)); }
+};
+
+// --- карта
+const map = L.map('map',{zoomControl:false}).setView([59.437,24.754],11);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(map);
+const icon = c => L.divIcon({className:'',html:`<div class="pin ${c}"></div>`,iconSize:[18,18],iconAnchor:[9,18]});
+
+function render(){
+  Object.values(markers).forEach(m=>m.remove()); markers={};
+  const list=$('list'); list.innerHTML='';
+  $('title').textContent = places.length ? `Хочу побывать · ${places.filter(p=>!p.done).length} из ${places.length}` : 'Хочу побывать';
+  if(!places.length){ list.innerHTML='<div class="empty">Нажмите на карту, чтобы отметить первое место.</div>'; return; }
+  places.sort((a,b)=>a.done-b.done||b.id-a.id).forEach(p=>{
+    markers[p.id]=L.marker([p.lat,p.lng],{icon:icon(p.done?'done':'')}).addTo(map).bindTooltip(p.name);
+    const row=document.createElement('div'); row.className='item'+(p.done?' done':'');
+    const n=document.createElement('span'); n.className='name'; n.textContent=p.name;
+    const ok=document.createElement('button'); ok.className='ghost'; ok.textContent=p.done?'Вернуть':'Был здесь';
+    const rm=document.createElement('button'); rm.className='ghost'; rm.textContent='Удалить';
+    row.onclick=()=>map.flyTo([p.lat,p.lng],15);
+    ok.onclick=e=>{e.stopPropagation();p.done=!p.done;store.save(p);render()};
+    rm.onclick=e=>{e.stopPropagation();if(!confirm('Удалить «'+p.name+'»?'))return;places=places.filter(x=>x!==p);store.del(p);render()};
+    row.append(n,ok,rm); list.append(row);
+  });
+}
+
+function startDraft(lat,lng,name=''){
+  clearDraft(); draft={lat,lng};
+  draftMarker=L.marker([lat,lng],{icon:icon('draft')}).addTo(map);
+  $('form').style.display='flex'; $('list').style.display='none'; $('name').value=name; $('name').focus();
+}
+function clearDraft(){ draft=null; draftMarker?.remove(); draftMarker=null; $('form').style.display='none'; $('list').style.display=''; }
+
+map.on('click',e=>startDraft(e.latlng.lat,e.latlng.lng));
+$('cancel').onclick=clearDraft;
+$('save').onclick=()=>{
+  const name=$('name').value.trim(); if(!name||!draft) return $('name').focus();
+  const p={id:Date.now(),name,lat:draft.lat,lng:draft.lng,done:false};
+  places.push(p); store.save(p); clearDraft(); render(); tg?.HapticFeedback?.notificationOccurred('success');
+};
+
+// --- поиск по названию (Nominatim / OpenStreetMap)
+$('search').onsubmit=async e=>{
+  e.preventDefault(); const q=$('q').value.trim(); if(!q) return;
+  try{
+    const r=await (await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q='+encodeURIComponent(q))).json();
+    if(!r.length) return alert('Ничего не найдено');
+    const {lat,lon,display_name}=r[0]; map.flyTo([+lat,+lon],15);
+    startDraft(+lat,+lon,display_name.split(',')[0]);
+  }catch{ alert('Поиск недоступен, попробуйте позже'); }
+};
+
+store.load(p=>{ places=p; render(); if(p.length) map.fitBounds(p.map(x=>[x.lat,x.lng]),{padding:[40,40],maxZoom:14}); });
+</script>
+</body>
+</html>
