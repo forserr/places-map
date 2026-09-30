@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Хочу побывать</title>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 <style>
 :root{
   --bg:#f7f8f7;--fg:#182328;--hint:#7b858a;--acc:#087f83;--accfg:#fff;
@@ -36,7 +36,7 @@ button,input{font:inherit;color:inherit}
 button{border:0;cursor:pointer;transition:transform .18s var(--ease),background .22s,opacity .22s}
 button:active{transform:scale(.96)}
 :focus-visible{outline:2px solid var(--acc);outline-offset:3px}
-#map{position:fixed;inset:0;background:var(--map)}
+#map{position:fixed;inset:0;width:100%;height:100%;min-height:100vh;background:var(--map);z-index:0}
 .float{position:fixed;z-index:500}
 
 /* Search — flat and light */
@@ -246,11 +246,33 @@ const store={
   del(p){cloud?cloud.removeItem('p_'+p.id):localStorage.setItem('places',JSON.stringify(places))}
 };
 
-// Карта (Санкт-Петербург); тёмные плитки при тёмной теме
-const dark=(tg?.colorScheme||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light'))==='dark';
-const map=L.map('map',{zoomControl:false,attributionControl:true}).setView(HOME,18);
-const osm=L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a>'}).addTo(map);
+// Карта (Санкт-Петербург)
+const mapElement=$('map');
+
+if(typeof L==='undefined'){
+  mapElement.innerHTML='<div style="padding:24px;font:600 15px system-ui;color:#b42318;background:rgba(255,255,255,.92);margin:20px;border-radius:16px">Не удалось загрузить Leaflet. Обновите страницу или отключите блокировщик CDN.</div>';
+  throw new Error('Leaflet failed to load');
+}
+
+const map=L.map(mapElement,{
+  zoomControl:false,
+  attributionControl:true,
+  preferCanvas:true
+}).setView(HOME,18);
+
+const osm=L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{
+  maxZoom:19,
+  referrerPolicy:'strict-origin-when-cross-origin',
+  attribution:'© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a>'
+}).addTo(map);
+
+osm.on('tileerror',()=>toast('Не удалось загрузить фрагмент карты'));
+
 if(wide())L.control.zoom({position:'bottomright'}).addTo(map);
+
+requestAnimationFrame(()=>map.invalidateSize());
+setTimeout(()=>map.invalidateSize(),250);
+setTimeout(()=>map.invalidateSize(),1000);
 const icon=(c,sz=[32,40])=>L.divIcon({className:'',html:`<div class="pin ${c}">${PIN}</div>`,iconSize:sz,iconAnchor:[16,40]});
 
 // Шторка: три положения, перетаскивается
@@ -307,7 +329,7 @@ function render(){
       toast(`«${p.name}» удалено`,()=>{places.push(p);store.save(p);render()})};
     r.append(c,t,d);list.append(r);
   });
-  list.insertAdjacentHTML('beforeend','<div class="credits">Карта © OpenStreetMap, © CARTO</div>');
+  list.insertAdjacentHTML('beforeend','<div class="credits">Карта © OpenStreetMap contributors</div>');
 }
 
 function startDraft(lat,lng,name=''){
@@ -347,6 +369,7 @@ map.on('locationfound',e=>{meMarker?.remove();meMarker=L.marker(e.latlng,{icon:L
 map.on('locationerror',()=>toast('Не удалось определить местоположение'));
 
 setSheet('peek');
+requestAnimationFrame(()=>map.invalidateSize());
 store.load(p=>{places=p;render();if(p.length){$('fit').click();setSheet('half')}setTimeout(()=>$('hint').classList.add('off'),6000)});
 </script>
 </body>
